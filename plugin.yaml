@@ -1,0 +1,10 @@
+name: codex-accounts-telegram
+version: "1.0.0"
+description: "Telegram-only Codex OAuth account picker with authorized inline callbacks."
+author: "Abstinence6"
+kind: standalone
+requires_hermes: ">=0.21.1"
+tags:
+  - telegram
+  - codex
+  - oauth
