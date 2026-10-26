@@ -63,6 +63,14 @@ class SurfaceTests(unittest.TestCase):
                 self.assertIsNotNone(reply)
                 self.assertEqual('plugin', reply['result']['type'])
                 self.assertIn('1. First', reply['result']['output'])
+                self.assertIn('No session selection; automatic runtime account is unknown.', reply['result']['output'])
+                selected = _dispatch_plugin('select', {'session_id': surface},
+                                            {'session_key': surface, 'source': surface}, 'codex_accounts', '2')
+                self.assertIn('Selected', selected['result']['output'])
+                refreshed = _dispatch_plugin('list', {'session_id': surface},
+                                             {'session_key': surface, 'source': surface}, 'codex_accounts', 'list')
+                self.assertIn('2. Second — email unavailable (id=two) [Active]', refreshed['result']['output'])
+                self.assertEqual(1, refreshed['result']['output'].count('[Active]'))
 
     def test_real_telegram_normalized_dispatch_and_owner_refusal(self):
         from gateway.run_inbound_hooks import GatewayInboundHooksMixin

@@ -29,7 +29,8 @@ try:
             print(row.split('. ', 1)[0] + '. [identity omitted]')
         elif row.startswith('   '):
             print(row)
-        elif row.startswith('Codex accounts') or row.startswith('No persisted'):
+        elif row.startswith(('Codex accounts', 'No persisted',
+                             'No session selection;', 'Session-selected account unavailable;')):
             print(row)
         else:
             raise RuntimeError('Probe did not return a list')

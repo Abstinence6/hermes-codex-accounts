@@ -5,7 +5,7 @@
 ## Команди
 
 - `/codex_accounts` без аргументів або `/codex_accounts list` — акаунти (власна назва + email), usage, час скидання і reset-кредити, якщо API їх повертає. Email береться лише з claims збереженого access token цього акаунта, без refresh чи зовнішнього lookup; за відсутності показується `email unavailable`. Назва після rename зберігається окремо.
-- `/codex_accounts n` або `select n` — вибір акаунта для наступного підтримуваного Codex-запиту **в тій самій сесії зі збереженням історії**.
+- `/codex_accounts n` або `select n` — вибір акаунта для наступного підтримуваного Codex-запиту **в тій самій сесії зі збереженням історії**. У списку Desktop/TUI/Telegram цей акаунт має маркер `Active` поруч із назвою та email. Це session pin, не підтвердження акаунта запиту, який уже виконується. Без pin показується `No session selection; automatic runtime account is unknown.` — перший акаунт за priority не вважається активним. Якщо pinned-акаунт зник, список повідомляє `Session-selected account unavailable`, не ставить `Active` іншому акаунту і не скидає pin.
 - `/codex_accounts add` — штатний device OAuth без паролів/токенів у чаті; `add check` завершує вхід, `add cancel` скасовує очікування.
 - `/codex_accounts rename n Нова назва` — перейменування.
 - `/codex_accounts delete n` — видалення з pool Hermes після одноразового підтвердження; не видаляє OpenAI-акаунт, не відкликає токени та не видаляє зовнішній CLI login.

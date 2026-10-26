@@ -11,6 +11,38 @@ class SelectionTests(unittest.TestCase):
     setUp = fixtures.AccountsTest.setUp
     tearDown = fixtures.AccountsTest.tearDown
     list_accounts = fixtures.AccountsTest.list_accounts
+    def test_list_marks_only_same_session_pin_and_preserves_identity(self):
+        self.rows[1]['label'] = 'Work <account>'
+        payload = base64.urlsafe_b64encode(json.dumps({'email': 'work@example.invalid'}).encode()).decode().rstrip('=')
+        self.rows[1]['access_token'] = 'fake.' + payload + '.fake'
+        self.auth.write_text(json.dumps(self.store))
+        before = self.auth.read_bytes()
+        self.list_accounts()
+        self.command('2', session_key='test', session_id='conversation')
+        with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
+            output = self.command('list', session_key='test', session_id='conversation')
+            other = self.command('list', session_key='test', session_id='other')
+        self.assertIn('2. Work ＜account＞ — work@example.invalid (id=two) [Active]', output)
+        self.assertEqual(1, output.count('[Active]'))
+        self.assertNotIn('[Active]', other)
+        self.assertIn('No session selection; automatic runtime account is unknown.', other)
+        self.assertEqual('two', self.command.selected['conversation'])
+        self.assertEqual(before, self.auth.read_bytes())
+
+    def test_list_missing_pin_is_unavailable_not_another_active_account(self):
+        self.list_accounts()
+        self.command('1', session_key='test', session_id='conversation')
+        self.rows.pop(0)
+        self.auth.write_text(json.dumps(self.store))
+        with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
+            output = self.command('list', session_key='test', session_id='conversation')
+            anonymous = self.command('list', session_key='test')
+        self.assertIn('Session-selected account unavailable', output)
+        self.assertNotIn('[Active]', output)
+        self.assertNotIn('No session selection', output)
+        self.assertIn('No session selection; automatic runtime account is unknown.', anonymous)
+        self.assertEqual('one', self.command.selected['conversation'])
+
     def test_same_session_switch_at_execution_boundary(self):
         import httpx
         from openai import OpenAI

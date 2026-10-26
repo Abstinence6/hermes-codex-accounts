@@ -80,10 +80,16 @@ class AccountsCommand:
         with self.lock:
             self.views[key] = (time.monotonic(), self.fingerprint(rows))
             self.pending.pop(key, None)
-        lines = ['Codex accounts (persisted order; selection is a conversation-local request pin):']
+            selected = self.selected.get(session_id) if session_id else None
+        lines = ['Codex accounts (persisted order; Active means a conversation-local request pin):']
+        if selected is None:
+            lines.append('No session selection; automatic runtime account is unknown.')
+        elif not any(row.get('id') == selected for row in rows):
+            lines.append('Session-selected account unavailable; supported pinned requests refuse rather than fall back.')
         for n, row in enumerate(rows, 1):
             entry = PooledCredential.from_dict(PROVIDER, row)
-            lines.append(f'{n}. {self.text(entry.label)} — {self.email(entry.access_token)} (id={self.text(entry.id)})')
+            marker = ' [Active]' if selected is not None and row.get('id') == selected else ''
+            lines.append(f'{n}. {self.text(entry.label)} — {self.email(entry.access_token)} (id={self.text(entry.id)}){marker}')
             lines.extend('   ' + self.text(line) for line in self.usage(entry))
         if not rows:
             lines.append('No persisted Codex accounts. Use /codex_accounts add to start explicit OAuth login.')

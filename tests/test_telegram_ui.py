@@ -41,6 +41,14 @@ class TelegramTests(unittest.TestCase):
                     await handler.handle_update(good, app, handler.check_update(good), SimpleNamespace())
                 self.assertEqual('one', self.command.selected['conversation'])
                 self.assertIn('Selected', send.call_args.kwargs['text'])
+                with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
+                    await self.command('list', platform='telegram', session_key='tg', session_id='conversation', source=source)
+                self.assertIn('1. First — email unavailable (id=one) [Active]', send.call_args.kwargs['text'])
+                self.assertIsNone(send.call_args.kwargs['parse_mode'])
+                with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
+                    await self.command('', platform='telegram', session_key='tg', session_id='other', source=source)
+                self.assertNotIn('[Active]', send.call_args.kwargs['text'])
+                self.assertIn('No session selection; automatic runtime account is unknown.', send.call_args.kwargs['text'])
                 # Old buttons must not be reinterpreted after a list refresh/reorder.
                 stale = self.command.keyboard(source, 'tg', 'conversation').inline_keyboard[0][0].callback_data
                 self.rows[0]['priority'] = 5
