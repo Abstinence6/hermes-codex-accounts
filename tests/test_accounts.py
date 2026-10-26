@@ -63,25 +63,25 @@ class AccountsTest(unittest.TestCase):
 
     def test_rename_persists_only_label(self):
         self.list_accounts()
-        self.assertIn('Renamed', self.command('ren 2 Work account', session_key='test'))
+        self.assertIn('Renamed', self.command('rename 2 Work account', session_key='test'))
         after = json.loads(self.auth.read_text())
         self.store['credential_pool']['openai-codex'][1]['label'] = 'Work account'
         after.pop('updated_at', None)
         self.assertEqual(self.store, after)
-        self.assertIn('ren n label', self.command('ren 2', session_key='test'))
+        self.assertIn('rename n label', self.command('rename 2', session_key='test'))
 
 
     def test_delete_requires_bound_confirmation(self):
         self.list_accounts()
         before = self.auth.read_bytes()
-        prompt = self.command('del 2', session_key='test')
+        prompt = self.command('delete 2', session_key='test')
         self.assertIn('confirm', prompt)
         self.assertEqual(before, self.auth.read_bytes())
         code = prompt.split('confirm ')[1].split()[0]
-        self.assertNotIn('Removed', self.command(f'del 2 confirm {code}', session_key='other'))
-        self.assertIn('Removed', self.command(f'del 2 confirm {code}', session_key='test'))
+        self.assertNotIn('Removed', self.command(f'delete 2 confirm {code}', session_key='other'))
+        self.assertIn('Removed', self.command(f'delete 2 confirm {code}', session_key='test'))
         self.assertEqual(['one'], [r['id'] for r in json.loads(self.auth.read_text())['credential_pool']['openai-codex']])
-        self.assertNotIn('Removed', self.command(f'del 2 confirm {code}', session_key='test'))
+        self.assertNotIn('Removed', self.command(f'delete 2 confirm {code}', session_key='test'))
 
 
     def test_selection_explicitly_refuses_without_reordering(self):
@@ -95,34 +95,34 @@ class AccountsTest(unittest.TestCase):
         from gateway.config import Platform
         source = SessionSource(platform=Platform.TELEGRAM, chat_id='42', user_id='42')
         before = self.auth.read_bytes()
-        self.assertIn('owner', self.command('ren 1 Hijacked', session_key='test', platform='telegram', source=source))
+        self.assertIn('owner', self.command('rename 1 Hijacked', session_key='test', platform='telegram', source=source))
         self.command.owner_ids = lambda: ['42']
         with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
             self.assertIn('1. First', self.command('list', session_key='test', platform='telegram', source=source))
         source.chat_type = 'group'
-        self.assertIn('owner', self.command('ren 1 Hijacked', session_key='test', platform='telegram', source=source))
+        self.assertIn('owner', self.command('rename 1 Hijacked', session_key='test', platform='telegram', source=source))
         source.chat_type = 'dm'
         source.user_id = '99'
-        self.assertIn('owner', self.command('ren 1 Hijacked', session_key='test', platform='telegram', source=source))
+        self.assertIn('owner', self.command('rename 1 Hijacked', session_key='test', platform='telegram', source=source))
         self.assertEqual(before, self.auth.read_bytes())
         source.user_id = '42'
-        self.assertIn('Renamed', self.command('ren 1 Owner label', session_key='test', platform='telegram', source=source))
+        self.assertIn('Renamed', self.command('rename 1 Owner label', session_key='test', platform='telegram', source=source))
 
 
     def test_stale_index_and_expired_confirmation_do_not_mutate(self):
         self.list_accounts()
-        prompt = self.command('del 1', session_key='test')
+        prompt = self.command('delete 1', session_key='test')
         code = prompt.split('confirm ')[1].split()[0]
         stamp, ident, view, pending_code = self.command.pending[('', 'test')]
         self.command.pending[('', 'test')] = (stamp - 61, ident, view, pending_code)
         before = self.auth.read_bytes()
-        self.assertIn('expired', self.command(f'del 1 confirm {code}', session_key='test'))
+        self.assertIn('expired', self.command(f'delete 1 confirm {code}', session_key='test'))
         self.assertEqual(before, self.auth.read_bytes())
         changed = json.loads(self.auth.read_text())
         changed['credential_pool']['openai-codex'][0]['priority'] = 8
         self.auth.write_text(json.dumps(changed))
         before = self.auth.read_bytes()
-        self.assertIn('changed', self.command('ren 1 Wrong', session_key='test'))
+        self.assertIn('changed', self.command('rename 1 Wrong', session_key='test'))
         self.assertEqual(before, self.auth.read_bytes())
 
     def test_rename_preserves_concurrent_token_rotation(self):
@@ -131,7 +131,7 @@ class AccountsTest(unittest.TestCase):
         changed['credential_pool']['openai-codex'][0]['access_token'] = 'new-generation'
         changed['credential_pool']['openai-codex'][0]['refresh_token'] = 'new-refresh'
         self.auth.write_text(json.dumps(changed))
-        self.assertIn('Renamed', self.command('ren 1 Work', session_key='test'))
+        self.assertIn('Renamed', self.command('rename 1 Work', session_key='test'))
         row = json.loads(self.auth.read_text())['credential_pool']['openai-codex'][0]
         self.assertEqual(('new-generation', 'new-refresh'), (row['access_token'], row['refresh_token']))
 
@@ -176,10 +176,10 @@ class AccountsTest(unittest.TestCase):
         external = self.home / 'external-login.json'
         external.write_text('must stay untouched')
         self.list_accounts()
-        prompt = self.command('del 2', session_key='test')
+        prompt = self.command('delete 2', session_key='test')
         self.assertIn('Second', prompt)
         code = prompt.split('confirm ')[1].split()[0]
-        self.assertIn('Removed', self.command(f'del 2 confirm {code}', session_key='test'))
+        self.assertIn('Removed', self.command(f'delete 2 confirm {code}', session_key='test'))
         saved = json.loads(self.auth.read_text())
         self.assertIn('codex_cli', saved['suppressed_sources']['openai-codex'])
         self.assertEqual('must stay untouched', external.read_text())

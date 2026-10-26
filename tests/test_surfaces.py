@@ -77,7 +77,7 @@ class SurfaceTests(unittest.TestCase):
             self.assertTrue(handled)
             self.assertIn('1. First', output)
             source.user_id = '99'
-            handled, output, command = asyncio.run(Runner()._hm_dispatch_plugin_command('ren 1 Bad', source, 'codex_accounts'))
+            handled, output, command = asyncio.run(Runner()._hm_dispatch_plugin_command('rename 1 Bad', source, 'codex_accounts'))
             self.assertTrue(handled)
             self.assertIn('owner', output)
         self.assertEqual(before, self.auth.read_bytes())

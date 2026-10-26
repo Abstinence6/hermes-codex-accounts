@@ -7,7 +7,7 @@ import time
 from hermes_constants import get_hermes_home
 
 PROVIDER = 'openai-codex'
-USAGE = ('/codex_accounts list | n | select n | add [check|cancel] | reset n | del n | ren n label\n'
+USAGE = ('/codex_accounts list | n | select n | add [check|cancel] | reset n | delete n | rename n label\n'
          'Deletion and provider reset require confirmation. List before using an index. Quota resets are provider-controlled.')
 
 
@@ -108,12 +108,12 @@ class AccountsCommand:
             if view and now - view[0] <= 600 and view[1] == self.fingerprint(rows):
                 for n in range(1, len(rows) + 1):
                     markup.append([button('Обрати', str(n)), button('Скинути ліміт', f'reset {n}')])
-                    markup.append([button('Перейменувати', f'ren {n}'), button('Видалити', f'del {n}')])
+                    markup.append([button('Перейменувати', f'rename {n}'), button('Видалити', f'delete {n}')])
             markup.append([button('Додати', 'add'), button('Оновити', 'list')])
             if ((key, session_id) in self.logins):
                 markup.append([button('Перевірити вхід', 'add check'), button('Скасувати вхід', 'add cancel')])
             import re
-            match = re.search(r'/codex_accounts ((?:del|reset) \d+ confirm [a-f0-9]+)', output)
+            match = re.search(r'/codex_accounts ((?:delete|reset) \d+ confirm [a-f0-9]+)', output)
             if match:
                 markup.append([button('Підтвердити', match.group(1))])
             return InlineKeyboardMarkup(markup)
@@ -156,8 +156,8 @@ class AccountsCommand:
                 await query.answer('Список змінився. Оновіть його.', show_alert=True)
                 raise ApplicationHandlerStop
             # Re-authorize every click against current owner settings and profile before mutation.
-            if raw.startswith('ren ') and len(raw.split()) == 2:
-                authorized = self.run('ren', key, sid, 'telegram', source)
+            if raw.startswith('rename ') and len(raw.split()) == 2:
+                authorized = self.run('rename', key, sid, 'telegram', source)
                 if authorized.startswith('Refused:'):
                     output = authorized
                 else:
@@ -274,12 +274,12 @@ class AccountsCommand:
         return tuple((r.get('id'), r.get('label'), r.get('priority', 0), r.get('source')) for r in rows)
 
     def mutate(self, args, key):
-        valid = (len(args) >= 3 and args[0] == 'ren') or (
-            args and args[0] in ('del', 'reset') and (len(args) == 2 or (len(args) == 4 and args[2] == 'confirm')))
+        valid = (len(args) >= 3 and args[0] == 'rename') or (
+            args and args[0] in ('delete', 'reset') and (len(args) == 2 or (len(args) == 4 and args[2] == 'confirm')))
         if not valid or not args[1].isascii() or not args[1].isdigit():
             return USAGE
-        label = ' '.join(args[2:]) if args[0] == 'ren' else ''
-        if args[0] == 'ren' and (len(label) > 100 or any(ord(c) < 32 for c in label)):
+        label = ' '.join(args[2:]) if args[0] == 'rename' else ''
+        if args[0] == 'rename' and (len(label) > 100 or any(ord(c) < 32 for c in label)):
             return 'Label must contain 1-100 printable characters.'
         if not key[1]:
             return 'Refused: a session identity is required for mutations.'
@@ -299,7 +299,7 @@ class AccountsCommand:
                 return 'Refused: borrowed credentials must be managed in their owning profile.'
             if args[0] == 'reset':
                 return self.reset(args, key, rows, index)
-            if args[0] == 'del':
+            if args[0] == 'delete':
                 return self.delete(args, key, rows, index, auth)
             rows[index] = {**rows[index], 'label': label}
             auth.write_credential_pool(PROVIDER, rows, token_bases=auth._token_pairs_by_id(rows))
@@ -367,12 +367,12 @@ class AccountsCommand:
             self.pending[key] = (time.monotonic(), row['id'], self.fingerprint(rows), code)
             return (f"Remove account #{index + 1} {self.text(row.get('label', ''))} "
                     f"(id={self.text(row['id'])}) from this Hermes pool only?\n"
-                    f"Within 60 seconds send /codex_accounts del {index + 1} confirm {code}\n"
+                    f"Within 60 seconds send /codex_accounts delete {index + 1} confirm {code}\n"
                     'This does not delete your OpenAI account or external CLI login. Existing runtimes may retain it.')
         pending = self.pending.pop(key, None)
         if (not pending or time.monotonic() - pending[0] > 60 or pending[1] != row['id']
                 or pending[2] != self.fingerprint(rows) or not secrets.compare_digest(pending[3], args[3])):
-            return 'Confirmation invalid or expired. Run /codex_accounts del n again.'
+            return 'Confirmation invalid or expired. Run /codex_accounts delete n again.'
         # Do not unlink external auth files or revoke upstream grants. Suppress a seeded source
         # through the core API so a later load cannot silently re-import the removed row.
         source = row.get('source') or ''
@@ -476,4 +476,4 @@ def register(ctx):
     for name in ('codex_accounts', 'codex-accounts'):
         # Messaging gateway normalizes underscores to hyphens before handler lookup.
         ctx.register_command(name, command, 'Codex account usage and safe pool management',
-                             args_hint='list | n | add | reset n | del n | ren n label')
+                             args_hint='list | n | add | reset n | delete n | rename n label')

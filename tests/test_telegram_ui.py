@@ -65,6 +65,17 @@ class TelegramTests(unittest.TestCase):
         with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
             self.command('list', platform='telegram', session_key='tg', session_id='conversation', source=source)
         markup = self.command.keyboard(source, 'tg', 'conversation')
+        actions = {button.text: self.command.buttons[button.callback_data][6]
+                   for row in markup.inline_keyboard for button in row}
+        self.assertEqual('rename 2', actions['Перейменувати'])
+        self.assertEqual('delete 2', actions['Видалити'])
+        prompt = self.command.run('delete 2', 'tg', 'conversation', 'telegram', source)
+        self.assertIn('/codex_accounts delete 2 confirm ', prompt)
+        confirmation = self.command.keyboard(source, 'tg', 'conversation', prompt)
+        confirm_button = confirmation.inline_keyboard[-1][0]
+        self.assertEqual('Підтвердити', confirm_button.text)
+        self.assertEqual(prompt.split('/codex_accounts ')[1].split('\n')[0],
+                         self.command.buttons[confirm_button.callback_data][6])
         labels = [button.text for row in markup.inline_keyboard for button in row]
         for label in ('Обрати', 'Додати', 'Скинути ліміт', 'Перейменувати', 'Видалити'):
             self.assertIn(label, labels)
