@@ -83,7 +83,7 @@ class AccountsCommand:
         lines = ['Codex accounts (persisted order; selection is a conversation-local request pin):']
         for n, row in enumerate(rows, 1):
             entry = PooledCredential.from_dict(PROVIDER, row)
-            lines.append(f'{n}. {self.text(entry.label)} (id={self.text(entry.id)})')
+            lines.append(f'{n}. {self.text(entry.label)} — {self.email(entry.access_token)} (id={self.text(entry.id)})')
             lines.extend('   ' + self.text(line) for line in self.usage(entry))
         if not rows:
             lines.append('No persisted Codex accounts. Use /codex_accounts add to start explicit OAuth login.')
@@ -268,6 +268,26 @@ class AccountsCommand:
         clean = ''.join(c if not unicodedata.category(c).startswith('C') else ' ' for c in str(value))
         return clean.translate(str.maketrans({'[': '［', ']': '］', '<': '＜', '>': '＞',
                                              '`': 'ˋ', '*': '∗', '_': '＿'}))
+
+    @classmethod
+    def email(cls, token):
+        # Display metadata only, never authentication/authorization. Decode only this
+        # persisted account's token; do not refresh or resolve another credential.
+        from hermes_cli.auth import _decode_jwt_claims
+        import re
+        try:
+            claims = _decode_jwt_claims(token or '')
+            profile = claims.get('https://api.openai.com/profile')
+            candidates = [claims.get('email')]
+            if isinstance(profile, dict):
+                candidates.append(profile.get('email'))
+            for value in candidates:
+                if (isinstance(value, str) and len(value) <= 254
+                        and re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value)):
+                    return cls.text(value)
+        except Exception:
+            pass
+        return 'email unavailable'
 
     @staticmethod
     def fingerprint(rows):
@@ -476,4 +496,5 @@ def register(ctx):
     for name in ('codex_accounts', 'codex-accounts'):
         # Messaging gateway normalizes underscores to hyphens before handler lookup.
         ctx.register_command(name, command, 'Codex account usage and safe pool management',
-                             args_hint='list | n | add | reset n | delete n | rename n label')
+                             args_hint='[list | n | add | reset n | delete n | rename n label]',
+                             argument_mode='mixed')

@@ -37,6 +37,37 @@ class AccountsTest(unittest.TestCase):
         reset_hermes_home_override(self.scope)
         self.tmp.cleanup()
 
+    def test_list_shows_email_beside_custom_label_without_writing(self):
+        import base64
+        claims = {'https://api.openai.com/profile': {'email': 'owner@example.invalid'}}
+        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')
+        self.rows[0]['access_token'] = 'fake.' + payload + '.signature'
+        self.auth.write_text(json.dumps(self.store))
+        before = self.auth.read_bytes()
+        result = self.list_accounts()
+        self.assertIn('1. First — owner@example.invalid', result)
+        self.assertNotIn(self.rows[0]['access_token'], result)
+        self.assertEqual(before, self.auth.read_bytes())
+
+    def test_email_claims_are_display_only_sanitized_and_fail_closed(self):
+        import base64
+        def token(claims):
+            payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')
+            return 'fake.' + payload + '.signature'
+        for claims in ({}, {'email': 42}, {'email': 'not-email'},
+                       {'email': 'injected\nrow@example.invalid'},
+                       {'email': 'x' * 255 + '@example.invalid'},
+                       {'https://api.openai.com/profile': 'bad'}):
+            with self.subTest(claims=claims):
+                self.assertEqual('email unavailable', self.command.email(token(claims)))
+        self.assertEqual('email unavailable', self.command.email('malformed-token'))
+        self.assertEqual('email unavailable', self.command.email(None))
+        self.assertEqual('owner@example.invalid', self.command.email(token({'email': 'owner@example.invalid'})))
+        self.assertEqual('＜b＞∗owner∗@example.invalid',
+                         self.command.email(token({'email': '<b>*owner*@example.invalid'})))
+        with patch('hermes_cli.auth.read_credential_pool', side_effect=AssertionError('must not read')):
+            self.assertIn('Refused:', self.command('', platform='telegram'))
+
     def test_usage_untrusted_url_never_fetches(self):
         from types import SimpleNamespace
         for url in ('https://attacker.invalid/backend-api/codex',

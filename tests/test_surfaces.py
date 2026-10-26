@@ -29,6 +29,17 @@ class SurfaceTests(unittest.TestCase):
         self.assertIn('codex-accounts', manager._plugin_commands)
         return manager
 
+    def test_optional_arguments_do_not_require_desktop_text_input(self):
+        manager = self.load_manager()
+        from types import SimpleNamespace
+        from tui_gateway.command_discovery import _Catalog, _catalog_plugin_commands
+        catalog = _Catalog()
+        module = SimpleNamespace(get_plugin_commands=lambda: manager._plugin_commands)
+        _catalog_plugin_commands(catalog, lambda name: module)
+        for name in ('codex_accounts', 'codex-accounts'):
+            self.assertEqual('mixed', catalog.commands['/' + name]['argument_mode'])
+            self.assertEqual('mixed', manager._plugin_commands[name]['argument_mode'])
+
     def test_real_loader_desktop_and_tui_dispatch(self):
         import importlib
         import tui_gateway.methods_tools as server
@@ -44,11 +55,11 @@ class SurfaceTests(unittest.TestCase):
                     _session_source=lambda session: session['source'],
                     _ok=lambda rid, result: {'id': rid, 'result': result}), \
                     patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
-                direct = server._run_plugin_command(lookup('codex_accounts'), 'list',
+                direct = server._run_plugin_command(lookup('codex_accounts'), '',
                                              {'session_key': surface, 'source': surface}, surface)
                 self.assertIn('1. First', direct)
                 reply = _dispatch_plugin('req', {'session_id': surface},
-                                         {'session_key': surface, 'source': surface}, 'codex_accounts', 'list')
+                                         {'session_key': surface, 'source': surface}, 'codex_accounts', '')
                 self.assertIsNotNone(reply)
                 self.assertEqual('plugin', reply['result']['type'])
                 self.assertIn('1. First', reply['result']['output'])
@@ -73,7 +84,7 @@ class SurfaceTests(unittest.TestCase):
         before = self.auth.read_bytes()
         with patch('hermes_cli.plugins.get_plugin_command_handler', lookup), \
                 patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
-            handled, output, command = asyncio.run(Runner()._hm_dispatch_plugin_command('list', source, 'codex_accounts'))
+            handled, output, command = asyncio.run(Runner()._hm_dispatch_plugin_command('', source, 'codex_accounts'))
             self.assertTrue(handled)
             self.assertIn('1. First', output)
             source.user_id = '99'

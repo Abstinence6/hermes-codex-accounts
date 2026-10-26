@@ -4,7 +4,7 @@
 
 ## Команди
 
-- `/codex_accounts` або `list` — акаунти, usage, час скидання і reset-кредити, якщо API їх повертає.
+- `/codex_accounts` без аргументів або `/codex_accounts list` — акаунти (власна назва + email), usage, час скидання і reset-кредити, якщо API їх повертає. Email береться лише з claims збереженого access token цього акаунта, без refresh чи зовнішнього lookup; за відсутності показується `email unavailable`. Назва після rename зберігається окремо.
 - `/codex_accounts n` або `select n` — вибір акаунта для наступного підтримуваного Codex-запиту **в тій самій сесії зі збереженням історії**.
 - `/codex_accounts add` — штатний device OAuth без паролів/токенів у чаті; `add check` завершує вхід, `add cancel` скасовує очікування.
 - `/codex_accounts rename n Нова назва` — перейменування.
@@ -45,7 +45,7 @@ Refresh/запис використовують auth-store lock та merge API H
 
 ## Перевірки
 
-**31 ізольований тест PASS; незалежне повторне рев'ю APPROVE.** Перевірено actual plugin loader/dispatch, same-session SDK MockTransport A→B, principal dedupe/refresh, usage URL allowlist, interrupts/stream ownership, Telegram callbacks/owner/stale snapshot та reset GET/POST/GET.
+**Ізольовані тести** (команда запуску нижче). Перевірено actual plugin loader/dispatch, same-session SDK MockTransport A→B, principal dedupe/refresh, usage URL allowlist, interrupts/stream ownership, Telegram callbacks/owner/stale snapshot та reset GET/POST/GET.
 
 З Python-середовища Hermes з доступними host modules та Telegram SDK:
 
@@ -54,6 +54,8 @@ python -B -m unittest discover -s tests -v
 ```
 
 За потреби додайте host source і isolated Telegram dependencies до `PYTHONPATH` (Windows: `;`). Тести працюють з fake credentials і тимчасовим HOME; bot/OAuth/reset transport замокані.
+
+Реєстрація команди явно використовує `argument_mode="mixed"`: непорожній `args_hint` без цього host перетворює на `text` у `commands.catalog`, хоча аргументи необов'язкові. Парсер уже трактує порожні аргументи як список. Тести перевіряють каталог і bare dispatch Desktop/TUI/Telegram.
 
 **Live Desktop/TUI/Telegram E2E не заявляється.** Реальні акаунти не видалялися, OAuth login не запускався, reset-кредити не витрачалися. Окремий read-only live usage probe підтвердив незмінність auth.json. Опційно: `python scripts/live_list.py --home PATH_TO_HERMES_HOME` — це не заміна UI E2E.
 
