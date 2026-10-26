@@ -1,10 +1,10 @@
-name: codex-accounts-telegram
-version: "1.0.0"
-description: "Telegram-only Codex OAuth account picker with authorized inline callbacks."
-author: "Abstinence6"
+name: codex-accounts
+version: "0.1.0"
 kind: standalone
-requires_hermes: ">=0.21.1"
-tags:
-  - telegram
-  - codex
-  - oauth
+manifest_version: 2
+description: Codex account usage, session-scoped selection, OAuth add and confirmed pool/reset actions
+config_schema:
+  telegram_owner_ids:
+    type: list
+    default: []
+    description: Explicit Telegram administrator user IDs; private DMs only, empty denies all.

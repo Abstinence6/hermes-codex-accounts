@@ -1,87 +1,62 @@
-# Codex Accounts Telegram Plugin
+# Hermes Codex Accounts
 
-English | [Українська](#українська)
+Самостійний плагін для **Desktop, TUI, Telegram**, без змін ядра Hermes.
 
-This Hermes plugin provides the Telegram `/codex_accounts` picker for Hermes
-versions that do not ship a native gateway handler. It shows generic Codex OAuth
-account labels and safe account-usage limits, then promotes the chosen account to
-the front of that profile's credential pool using an inline button.
+## Команди
 
-## Requirements
+- `/codex_accounts` або `list` — акаунти, usage, час скидання і reset-кредити, якщо API їх повертає.
+- `/codex_accounts n` або `select n` — вибір акаунта для наступного підтримуваного Codex-запиту **в тій самій сесії зі збереженням історії**.
+- `/codex_accounts add` — штатний device OAuth без паролів/токенів у чаті; `add check` завершує вхід, `add cancel` скасовує очікування.
+- `/codex_accounts ren n Нова назва` — перейменування.
+- `/codex_accounts del n` — видалення з pool Hermes після одноразового підтвердження; не видаляє OpenAI-акаунт, не відкликає токени та не видаляє зовнішній CLI login.
+- `/codex_accounts reset n` — після підтвердження використовує доступний накопичений provider reset-кредит: GET usage → guard → POST consume → GET readback. Без кредиту/вичерпаного вікна POST не надсилається. Невизначений результат не повторюється автоматично; локальний cooldown reset не підставляється замість справжнього скидання.
 
-- Hermes `>=0.21.1`
-- A configured Telegram gateway
-- At least one Codex OAuth account (`hermes auth`)
+Перед операціями за номером відкрийте свіжий список у тій самій сесії. Зміна складу/порядку робить старі номери та кнопки недійсними. Підтвердження del/reset одноразове, на 60 секунд.
 
-## Install
+## Telegram
 
-Install from GitHub with Hermes' native plugin installer:
+Використовується вже налаштований Telegram Application Hermes, без копіювання bot token чи другого polling-бота. Кнопки: **Обрати · Додати · Скинути ліміт · Перейменувати · Видалити**, оновлення списку, підтвердження та OAuth check/cancel. Перейменування приймає текстову відповідь; `/cancel` скасовує її.
 
-```bash
-hermes plugins install Abstinence6/hermes-codex-accounts --enable
-hermes gateway restart
-```
+Доступ за замовчуванням заборонений. Потрібен явний numeric Telegram user ID у `plugins.entries.codex-accounts.settings.telegram_owner_ids`. Дозволені лише приватні root-DM власника, не групи/канали/topics. Доступ до бота не дорівнює праву керувати акаунтами. Callback-и одноразові, непрозорі, з TTL та прив'язкою до owner/chat/session/snapshot.
 
-The installer clones the repository into the active profile's plugin directory,
-runs Hermes' plugin security scan, and records its source revision. Do not copy
-files into the Hermes checkout manually.
+## Встановлення
 
-To remove the plugin:
+Потрібен Hermes із supported execution middleware, Telegram handler factory та відповідними Codex auth/usage helper-ами. Сумісність з усіма старими версіями не заявляється. Telegram потребує штатних залежностей та **`plugins.isolation: in_process`**; плагін не змінює цю політику автоматично.
 
 ```bash
-hermes plugins remove codex-accounts-telegram
-hermes gateway restart
+hermes plugins install Abstinence6/hermes-codex-accounts --no-enable
+hermes config set plugins.entries.codex-accounts.settings.telegram_owner_ids '["YOUR_NUMERIC_TELEGRAM_USER_ID"]'
+hermes plugins enable codex-accounts
 ```
 
-## Compatibility
+Замініть placeholder власним numeric ID. Загальна згода на плагіни та isolation мають відповідати політиці вашого Hermes. Для завантаження нового коду потрібне штатне перезавантаження owning-процесу, яке може перервати активні задачі. Публікація сама нічого не встановлює й не перезапускає.
 
-Current Hermes versions can include a native Telegram `/codex_accounts` gateway
-handler. When that canonical command is present, this plugin intentionally
-registers neither its command nor Telegram handlers. This prevents duplicate
-picker messages and makes the plugin a safe fallback for older Hermes releases.
+### Міграція
 
-## Commands and UX
+Старий плагін цього репозиторію мав ID `codex-accounts-telegram` та лише змінював priority. Новий ID — **`codex-accounts`**. Якщо старий встановлений, перед увімкненням нового виконайте `hermes plugins disable codex-accounts-telegram`. Не тримайте активними два плагіни з однаковими командами. Стара версія збережена в Git history.
 
-- `/codex_accounts` is the canonical Telegram command and the menu spelling.
-- `/codex-accounts` remains accepted when typed for backwards compatibility.
+## Межі та безпека
 
-In an authorized private Telegram chat, the command renders one inline-picker
-message. Each generic account button shows its current state and safe Session /
-Weekly quota summary; selecting it updates the same message with confirmation.
-In a group, the plugin returns only a safe instruction to open the bot's private
-DM and does not read account data.
+Вибір діє через штатний `llm_execution` middleware на наступний Codex Responses-запит, не на запит, який уже виконується. Pins process-local і губляться після reload/restart. Auxiliary calls, інші сесії та зовнішній app-server runtime не перемикаються. Core pool usage attribution не переприв'язується.
 
-The plugin never sends credential IDs, tokens, account labels, or raw quota
-responses to Telegram. Callback IDs are random, expire after ten minutes, are
-bound to the initiating user/chat/thread/message, and are consumed before the
-credential priority changes.
+Токени додаються після request observers/debug dumps і лише для перевіреного official HTTPS endpoint; custom proxy не підтримуються. Помилка pinned-запиту повертає явно позначену локальну відмову без тихого fallback. Stop/cancel і caller-owned stream lifecycle збережені.
 
-## Українська
+Refresh/запис використовують auth-store lock та merge API Hermes. OAuth identity — `(chatgpt_account_id, sub)`, тому учасники одного workspace не зливаються. Внутрішні host API потребують повторної перевірки після оновлення Hermes. Видалення не відкликає credentials, уже утримувані runtime.
 
-Це плагін Hermes для Telegram-команди `/codex_accounts` у версіях Hermes, де
-ще немає штатного gateway-обробника. У приватному авторизованому чаті він показує
-одну картку-вибір з узагальненими назвами Codex OAuth-акаунтів і безпечними
-лімітами Session/Weekly. Натискання кнопки змінює ту саму картку на підтвердження
-та ставить вибраний акаунт першим у credential pool активного профілю.
+## Перевірки
 
-Штатне встановлення з GitHub:
+**31 ізольований тест PASS; незалежне повторне рев'ю APPROVE.** Перевірено actual plugin loader/dispatch, same-session SDK MockTransport A→B, principal dedupe/refresh, usage URL allowlist, interrupts/stream ownership, Telegram callbacks/owner/stale snapshot та reset GET/POST/GET.
+
+З Python-середовища Hermes з доступними host modules та Telegram SDK:
 
 ```bash
-hermes plugins install Abstinence6/hermes-codex-accounts --enable
-hermes gateway restart
+python -B -m unittest discover -s tests -v
 ```
 
-Видалення:
+За потреби додайте host source і isolated Telegram dependencies до `PYTHONPATH` (Windows: `;`). Тести працюють з fake credentials і тимчасовим HOME; bot/OAuth/reset transport замокані.
 
-```bash
-hermes plugins remove codex-accounts-telegram
-hermes gateway restart
-```
+**Live Desktop/TUI/Telegram E2E не заявляється.** Реальні акаунти не видалялися, OAuth login не запускався, reset-кредити не витрачалися. Окремий read-only live usage probe підтвердив незмінність auth.json. Опційно: `python scripts/live_list.py --home PATH_TO_HERMES_HOME` — це не заміна UI E2E.
 
-Якщо у вашій версії Hermes уже є штатний `/codex_accounts`, плагін безпечно не
-реєструє власні handlers. Це унеможливлює дублювання повідомлень. У групах плагін
-не читає дані акаунтів і просить відкрити приватний DM з ботом.
+[Hermes plugin docs](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins) · [Middleware](https://hermes-agent.nousresearch.com/docs/developer-guide/middleware)
 
-## License
-
-[MIT](LICENSE)
+[MIT License](LICENSE)
