@@ -30,7 +30,7 @@ try:
         elif row.startswith('   '):
             print(row)
         elif row.startswith(('Codex accounts', 'No persisted',
-                             'No session selection;', 'Session-selected account unavailable;')):
+                             'Existing runtimes/sessions may retain bound credentials;')):
             print(row)
         else:
             raise RuntimeError('Probe did not return a list')

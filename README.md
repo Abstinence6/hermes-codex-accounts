@@ -5,7 +5,7 @@
 ## Команди
 
 - `/codex_accounts` без аргументів або `/codex_accounts list` — акаунти (власна назва + email), usage, час скидання і reset-кредити, якщо API їх повертає. Email береться лише з claims збереженого access token цього акаунта, без refresh чи зовнішнього lookup; за відсутності показується `email unavailable`. Назва після rename зберігається окремо.
-- `/codex_accounts n` або `select n` — вибір акаунта для наступного підтримуваного Codex-запиту **в тій самій сесії зі збереженням історії**. У списку Desktop/TUI/Telegram цей акаунт має маркер `Active` поруч із назвою та email. Це session pin, не підтвердження акаунта запиту, який уже виконується. Без pin показується `No session selection; automatic runtime account is unknown.` — перший акаунт за priority не вважається активним. Якщо pinned-акаунт зник, список повідомляє `Session-selected account unavailable`, не ставить `Active` іншому акаунту і не скидає pin.
+- `/codex_accounts n` або `select n` — глобальний пріоритет акаунта **в межах поточного профілю**: вибраний stable ID переноситься на priority 0 у збереженому pool. `Active` у списку означає лише цей persisted preferred account, однаковий для всіх сесій/процесів, які читають цей profile store. Це не визначення credential поточного запиту. Уже створені runtime/SDK-клієнти та запити можуть утримувати попередні credentials; примусове перемикання всіх запущених сесій не гарантується.
 - `/codex_accounts add` — штатний device OAuth без паролів/токенів у чаті; `add check` завершує вхід, `add cancel` скасовує очікування.
 - `/codex_accounts rename n Нова назва` — перейменування.
 - `/codex_accounts delete n` — видалення з pool Hermes після одноразового підтвердження; не видаляє OpenAI-акаунт, не відкликає токени та не видаляє зовнішній CLI login.
@@ -21,7 +21,7 @@
 
 ## Встановлення
 
-Потрібен Hermes із supported execution middleware, Telegram handler factory та відповідними Codex auth/usage helper-ами. Сумісність з усіма старими версіями не заявляється. Telegram потребує штатних залежностей та **`plugins.isolation: in_process`**; плагін не змінює цю політику автоматично.
+Потрібен Hermes із Telegram handler factory та відповідними Codex auth/usage helper-ами. Сумісність з усіма старими версіями не заявляється. Telegram потребує штатних залежностей та **`plugins.isolation: in_process`**; плагін не змінює цю політику автоматично.
 
 ```bash
 hermes plugins install Abstinence6/hermes-codex-accounts --no-enable
@@ -37,15 +37,17 @@ hermes plugins enable codex-accounts
 
 ## Межі та безпека
 
-Вибір діє через штатний `llm_execution` middleware на наступний Codex Responses-запит, не на запит, який уже виконується. Pins process-local і губляться після reload/restart. Auxiliary calls, інші сесії та зовнішній app-server runtime не перемикаються. Core pool usage attribution не переприв'язується.
+Вибір змінює збережений pool order тільки після явної команди або авторизованої кнопки. Немає session pins, execution middleware, підміни заголовків чи refresh під час вибору. Майбутнє завантаження pool враховує цей порядок; фактичний вибір залежить також від host strategy, доступності, cooldown та квот. Інші профілі/borrowed global-root credentials не змінюються. Список залишається read-only.
 
-Токени додаються після request observers/debug dumps і лише для перевіреного official HTTPS endpoint; custom proxy не підтримуються. Помилка pinned-запиту повертає явно позначену локальну відмову без тихого fallback. Stop/cancel і caller-owned stream lifecycle збережені.
+Для вже запущених сесій немає гарантії негайного переходу. Потрібен runtime, який заново завантажує pool (зазвичай нова сесія або штатне відновлення/restart owning-процесу). Плагін сам нічого не перезапускає й не змінює історію. Застосування до всіх поточних runtime без core/API підтримки не заявляється.
+
+В installed API `CredentialPool.move_entry(id, 0)` перезаписує priorities, але не переприв'язує SDK-клієнти/інші pool instances. У `hermes_cli.auth` немає wrapper-а для move. Тому команда використовує наявні `read_credential_pool` / `write_credential_pool` під reentrant auth-store lock, без нового `load_pool` (який може seed/normalize/persist). Raw rows зберігають metadata без dataclass round-trip. Після запису перевіряються exact target ID, весь порядок та незмінність усіх полів, крім priority, включно з tokens; при невідповідності успіх не заявляється й небезпечний rollback не виконується.
 
 Refresh/запис використовують auth-store lock та merge API Hermes. OAuth identity — `(chatgpt_account_id, sub)`, тому учасники одного workspace не зливаються. Внутрішні host API потребують повторної перевірки після оновлення Hermes. Видалення не відкликає credentials, уже утримувані runtime.
 
 ## Перевірки
 
-**Ізольовані тести** (команда запуску нижче). Перевірено actual plugin loader/dispatch, same-session SDK MockTransport A→B, principal dedupe/refresh, usage URL allowlist, interrupts/stream ownership, Telegram callbacks/owner/stale snapshot та reset GET/POST/GET.
+**Ізольовані тести** (команда запуску нижче). Перевіряються actual plugin loader/dispatch, persisted global ordering/readback, metadata/token safety, обмеження existing SDK через MockTransport, principal dedupe, usage URL allowlist, Telegram callbacks/owner/stale snapshot та reset GET/POST/GET.
 
 З Python-середовища Hermes з доступними host modules та Telegram SDK:
 

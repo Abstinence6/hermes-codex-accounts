@@ -2,7 +2,7 @@ name: codex-accounts
 version: "0.1.0"
 kind: standalone
 manifest_version: 2
-description: Codex account usage, session-scoped selection, OAuth add and confirmed pool/reset actions
+description: Codex account usage, global profile pool preference, OAuth add and confirmed pool/reset actions
 config_schema:
   telegram_owner_ids:
     type: list

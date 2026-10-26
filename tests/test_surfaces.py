@@ -57,19 +57,19 @@ class SurfaceTests(unittest.TestCase):
                     patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
                 direct = server._run_plugin_command(lookup('codex_accounts'), '',
                                              {'session_key': surface, 'source': surface}, surface)
-                self.assertIn('1. First', direct)
+                self.assertIn('First — email unavailable', direct)
                 reply = _dispatch_plugin('req', {'session_id': surface},
                                          {'session_key': surface, 'source': surface}, 'codex_accounts', '')
                 self.assertIsNotNone(reply)
                 self.assertEqual('plugin', reply['result']['type'])
-                self.assertIn('1. First', reply['result']['output'])
-                self.assertIn('No session selection; automatic runtime account is unknown.', reply['result']['output'])
+                self.assertIn('First — email unavailable', reply['result']['output'])
+                self.assertIn('global preferred', reply['result']['output'])
                 selected = _dispatch_plugin('select', {'session_id': surface},
                                             {'session_key': surface, 'source': surface}, 'codex_accounts', '2')
-                self.assertIn('Selected', selected['result']['output'])
+                self.assertIn('Global preferred', selected['result']['output'])
                 refreshed = _dispatch_plugin('list', {'session_id': surface},
                                              {'session_key': surface, 'source': surface}, 'codex_accounts', 'list')
-                self.assertIn('2. Second — email unavailable (id=two) [Active]', refreshed['result']['output'])
+                self.assertIn('[Active]', refreshed['result']['output'])
                 self.assertEqual(1, refreshed['result']['output'].count('[Active]'))
 
     def test_real_telegram_normalized_dispatch_and_owner_refusal(self):

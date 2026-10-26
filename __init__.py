@@ -1,4 +1,4 @@
-"""Standalone profile-local Codex accounts, OAuth, and session-scoped middleware."""
+"""Standalone profile-local Codex accounts, OAuth, and global pool preference."""
 from pathlib import Path
 import threading
 import secrets
@@ -18,7 +18,6 @@ class AccountsCommand:
         self.lock = threading.RLock()
         self.views = {}
         self.pending = {}
-        self.selected = {}
         self.logins = {}
         self.buttons = {}
         self.renames = {}
@@ -48,23 +47,9 @@ class AccountsCommand:
         elif platform not in ('', 'cli', 'local', 'desktop', 'tui'):
             return 'Refused: unsupported account management surface.'
         args = raw_args.strip().split()
-        if (len(args) == 1 and args[0].isdigit()) or (len(args) == 2 and args[0] == 'select' and args[1].isdigit()):
-            if not session_id:
-                return 'Account activation unavailable: a stable conversation session_id is required. No changes.'
-            from hermes_cli.auth import read_credential_pool
-            with self.lock:
-                rows = sorted(read_credential_pool(PROVIDER), key=lambda r: r.get('priority', 0))
-                key = (platform, session_key or session_id)
-                view = self.views.get(key)
-                if not view or time.monotonic() - view[0] > 600 or view[1] != self.fingerprint(rows):
-                    return 'Account list changed or expired. Run /codex_accounts list again.'
-                index = int(args[-1]) - 1
-                if not 0 <= index < len(rows):
-                    return 'Invalid account index.'
-                self.selected[session_id] = rows[index]['id']
-            return ('Selected account for the next supported Codex request in this same conversation. '
-                    'In-flight requests, auxiliary calls, other sessions and core pool priority are unchanged. '
-                    'Selection is process-local; provider failures refuse rather than rotate accounts.')
+        if ((len(args) == 1 and args[0].isascii() and args[0].isdigit())
+                or (len(args) == 2 and args[0] == 'select' and args[1].isascii() and args[1].isdigit())):
+            return self.select(args[-1], (platform, session_key or session_id))
         if not args:
             args = ['list']
         key = (platform, session_key or session_id)
@@ -80,15 +65,11 @@ class AccountsCommand:
         with self.lock:
             self.views[key] = (time.monotonic(), self.fingerprint(rows))
             self.pending.pop(key, None)
-            selected = self.selected.get(session_id) if session_id else None
-        lines = ['Codex accounts (persisted order; Active means a conversation-local request pin):']
-        if selected is None:
-            lines.append('No session selection; automatic runtime account is unknown.')
-        elif not any(row.get('id') == selected for row in rows):
-            lines.append('Session-selected account unavailable; supported pinned requests refuse rather than fall back.')
+        lines = ['Codex accounts (persisted order; Active means global preferred account in this profile):',
+                 'Existing runtimes/sessions may retain bound credentials; runtime account is not inferred.']
         for n, row in enumerate(rows, 1):
             entry = PooledCredential.from_dict(PROVIDER, row)
-            marker = ' [Active]' if selected is not None and row.get('id') == selected else ''
+            marker = ' [Active]' if n == 1 else ''
             lines.append(f'{n}. {self.text(entry.label)} — {self.email(entry.access_token)} (id={self.text(entry.id)}){marker}')
             lines.extend('   ' + self.text(line) for line in self.usage(entry))
         if not rows:
@@ -299,6 +280,50 @@ class AccountsCommand:
     def fingerprint(rows):
         return tuple((r.get('id'), r.get('label'), r.get('priority', 0), r.get('source')) for r in rows)
 
+    def select(self, number, key):
+        """Persist a profile-wide preference, never rebind existing runtimes.
+
+        auth has no move wrapper. Use its read/write merge boundary directly:
+        constructing/loading a CredentialPool would add normalization/seeding
+        side effects and dataclass round-tripping could discard row metadata.
+        """
+        from hermes_cli import auth
+        import copy
+        if not key[1]:
+            return 'Refused: a session identity is required for selection.'
+        with self.lock, auth._auth_store_lock():
+            if Path(get_hermes_home()).resolve() != self.home:
+                return 'Refused: plugin belongs to another profile.'
+            rows = sorted(auth.read_credential_pool(PROVIDER), key=lambda r: r.get('priority', 0))
+            view = self.views.get(key)
+            if not view or time.monotonic() - view[0] > 600 or view[1] != self.fingerprint(rows):
+                return 'Account list changed or expired. Run /codex_accounts list again.'
+            index = int(number) - 1
+            if not 0 <= index < len(rows):
+                return 'Invalid account index. Run /codex_accounts list.'
+            ids = [r.get('id') for r in rows]
+            if any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids):
+                return 'Refused: account IDs are missing or ambiguous. No changes.'
+            owned = auth._load_auth_store().get('credential_pool', {}).get(PROVIDER, [])
+            if sorted(r.get('id', '') for r in owned) != sorted(ids):
+                return 'Refused: borrowed credentials must be managed in their owning profile.'
+            target = ids[index]
+            ordered = [rows[index], *rows[:index], *rows[index + 1:]]
+            expected = [{**copy.deepcopy(row), 'priority': priority} for priority, row in enumerate(ordered)]
+            # Retain an independent expectation: verify the exact target, full order,
+            # tokens and all other metadata after the host merge writer returns.
+            auth.write_credential_pool(PROVIDER, copy.deepcopy(expected),
+                                       token_bases=auth._token_pairs_by_id(rows))
+            saved = sorted(auth.read_credential_pool(PROVIDER), key=lambda r: r.get('priority', 0))
+            self.views.clear()
+            self.pending.clear()
+            if not saved or saved[0].get('id') != target or saved != expected:
+                return 'Global preference could not be verified; no success confirmed. Run list again. Do not blindly retry.'
+            return ('Global preferred account set for this profile; persisted pool order verified. '
+                    'Future pool loading/selection uses this preference subject to host strategy and availability. '
+                    'Existing runtimes/sessions and in-flight requests may retain bound credentials; '
+                    'no forced switch or per-request account guarantee. Run /codex_accounts to refresh indices.')
+
     def mutate(self, args, key):
         valid = (len(args) >= 3 and args[0] == 'rename') or (
             args and args[0] in ('delete', 'reset') and (len(args) == 2 or (len(args) == 4 and args[2] == 'confirm')))
@@ -413,71 +438,6 @@ class AccountsCommand:
         return 'Removed from Hermes pool only. Existing runtimes are unchanged; start a new session.'
 
     @staticmethod
-    def refuse():
-        # A local middleware short-circuit, explicitly NOT an upstream model response.
-        from openai.types.chat import ChatCompletion
-        return ChatCompletion(id='codex-accounts-local-refusal', created=0, model='local-policy',
-                              object='chat.completion', choices=[{'index': 0, 'finish_reason': 'stop',
-                              'message': {'role': 'assistant', 'content':
-                              'Codex account request refused locally: selected account unavailable, unsupported route, or provider error. No fallback account was used.'}}])
-
-    def execute(self, *, request, next_call, session_id='', provider='', api_mode='', base_url='', **context):
-        # Late injection keeps secrets out of request observers/debug dumps. Do not raise from
-        # this middleware: the host deliberately fails open before next_call on exceptions.
-        with self.lock:
-            ident = self.selected.get(session_id)
-        if ident is None:
-            return next_call(request)
-        try:
-            from agent.codex_headers import is_official_codex_base_url, codex_account_headers
-            from hermes_cli import auth
-            from hermes_cli.auth_codex import _codex_access_token_is_expiring, refresh_codex_oauth_pure
-            if Path(get_hermes_home()).resolve() != self.home:
-                return self.refuse()
-            if provider != PROVIDER or api_mode != 'codex_responses' or not is_official_codex_base_url(base_url):
-                return self.refuse()
-            with auth._auth_store_lock():
-                rows = auth.read_credential_pool(PROVIDER)
-                row = next((r for r in rows if r['id'] == ident), None)
-                if not row or not row.get('access_token'):
-                    return self.refuse()
-                token = row['access_token']
-                if _codex_access_token_is_expiring(token, 60):
-                    owned = auth._load_auth_store().get('credential_pool', {}).get(PROVIDER, [])
-                    if not any(r['id'] == ident for r in owned):
-                        return self.refuse()
-                    bases = auth._token_pairs_by_id(rows)
-                    row.update(refresh_codex_oauth_pure(token, row.get('refresh_token', '')))
-                    auth.write_credential_pool(PROVIDER, rows, token_bases=bases)
-                    token = row['access_token']
-                identity = codex_account_headers(token)
-                if not identity.get('ChatGPT-Account-ID'):
-                    return self.refuse()
-            outgoing = dict(request)
-            headers = {k: v for k, v in (request.get('extra_headers') or {}).items()
-                       if k.lower() not in ('authorization', 'chatgpt-account-id', 'x-openai-internal-codex-residency')}
-            # Empty residency overrides a stale client default for a non-residency account.
-            headers['x-openai-internal-codex-residency'] = ''
-            headers.update(identity)
-            headers['Authorization'] = 'Bearer ' + token
-            outgoing['extra_headers'] = headers
-            return next_call(outgoing)
-        except InterruptedError:
-            raise
-        except Exception as exc:
-            # The host wraps downstream Exception instances; re-raise its wrapper so
-            # it unwraps the original interrupt (including partial response state).
-            from hermes_cli.middleware import _DownstreamExecutionError
-            original = exc
-            while isinstance(original, _DownstreamExecutionError):
-                original = original.original
-            if isinstance(original, InterruptedError) or not isinstance(original, Exception):
-                raise
-            # Includes downstream errors: don't let core rotation attribute selected-account
-            # failures to its stale pool identity. A pin never silently falls back.
-            return self.refuse()
-
-    @staticmethod
     def usage(entry):
         if not entry.access_token:
             return ['Usage unavailable (no access token); not refreshed.']
@@ -497,7 +457,6 @@ class AccountsCommand:
 
 def register(ctx):
     command = AccountsCommand(get_hermes_home(), lambda: ctx.get_config('telegram_owner_ids', []))
-    ctx.register_middleware('llm_execution', command.execute)
     ctx.register_telegram_handler(command.telegram_factory)
     for name in ('codex_accounts', 'codex-accounts'):
         # Messaging gateway normalizes underscores to hyphens before handler lookup.

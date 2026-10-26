@@ -115,10 +115,10 @@ class AccountsTest(unittest.TestCase):
         self.assertNotIn('Removed', self.command(f'delete 2 confirm {code}', session_key='test'))
 
 
-    def test_selection_explicitly_refuses_without_reordering(self):
+    def test_selection_requires_fresh_snapshot_without_reordering(self):
         before = self.auth.read_bytes()
         for args in ('2', 'select 2'):
-            self.assertIn('activation unavailable', self.command(args, session_key='test'))
+            self.assertIn('changed or expired', self.command(args, session_key='test'))
         self.assertEqual(before, self.auth.read_bytes())
 
     def test_telegram_requires_explicit_owner_dm(self):

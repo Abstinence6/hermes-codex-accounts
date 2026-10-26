@@ -35,20 +35,20 @@ class TelegramTests(unittest.TestCase):
                 bad = update(99)
                 with self.assertRaises(ApplicationHandlerStop):
                     await handler.handle_update(bad, app, handler.check_update(bad), SimpleNamespace())
-                self.assertNotIn('conversation', self.command.selected)
+                self.assertEqual(['one', 'two'], [r['id'] for r in __import__('json').loads(self.auth.read_text())['credential_pool']['openai-codex']])
                 good = update(42)
                 with self.assertRaises(ApplicationHandlerStop):
                     await handler.handle_update(good, app, handler.check_update(good), SimpleNamespace())
-                self.assertEqual('one', self.command.selected['conversation'])
-                self.assertIn('Selected', send.call_args.kwargs['text'])
+                self.assertFalse(hasattr(self.command, 'selected'))
+                self.assertIn('Global preferred', send.call_args.kwargs['text'])
                 with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
                     await self.command('list', platform='telegram', session_key='tg', session_id='conversation', source=source)
                 self.assertIn('1. First — email unavailable (id=one) [Active]', send.call_args.kwargs['text'])
                 self.assertIsNone(send.call_args.kwargs['parse_mode'])
                 with patch('agent.account_usage._fetch_codex_account_usage_read_only', return_value=None):
                     await self.command('', platform='telegram', session_key='tg', session_id='other', source=source)
-                self.assertNotIn('[Active]', send.call_args.kwargs['text'])
-                self.assertIn('No session selection; automatic runtime account is unknown.', send.call_args.kwargs['text'])
+                self.assertIn('1. First — email unavailable (id=one) [Active]', send.call_args.kwargs['text'])
+                self.assertIn('global preferred', send.call_args.kwargs['text'])
                 # Old buttons must not be reinterpreted after a list refresh/reorder.
                 stale = self.command.keyboard(source, 'tg', 'conversation').inline_keyboard[0][0].callback_data
                 self.rows[0]['priority'] = 5
@@ -61,7 +61,7 @@ class TelegramTests(unittest.TestCase):
                 old = update(42)
                 with self.assertRaises(ApplicationHandlerStop):
                     await handler.handle_update(old, app, handler.check_update(old), SimpleNamespace())
-                self.assertEqual('one', self.command.selected['conversation'])
+                self.assertFalse(hasattr(self.command, 'selected'))
         asyncio.run(exercise())
 
     def test_keyboard_opaque_owner_bound_actions(self):
