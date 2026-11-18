@@ -20,7 +20,7 @@ class GlobalSelectionTests(unittest.TestCase):
         with patch('agent.credential_pool.load_pool', side_effect=AssertionError('must not load pool')):
             output = self.command('2', session_key='test')
         self.assertIn('Global preferred', output)
-        self.assertIn('Existing runtimes/sessions', output)
+        self.assertIn('To apply it reliably, start a new session (do not resume an existing one)', output)
         saved = self.saved()
         self.assertEqual(['two', 'one'], [r['id'] for r in saved])
         self.assertEqual([0, 1], [r['priority'] for r in saved])

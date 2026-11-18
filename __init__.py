@@ -321,8 +321,9 @@ class AccountsCommand:
                 return 'Global preference could not be verified; no success confirmed. Run list again. Do not blindly retry.'
             return ('Global preferred account set for this profile; persisted pool order verified. '
                     'Future pool loading/selection uses this preference subject to host strategy and availability. '
-                    'Existing runtimes/sessions and in-flight requests may retain bound credentials; '
-                    'no forced switch or per-request account guarantee. Run /codex_accounts to refresh indices.')
+                    'This does not switch credentials held by existing runtimes/sessions or in-flight requests. '
+                    'To apply it reliably, start a new session (do not resume an existing one); no runtime-reload '
+                    'action for rebinding an existing session is verified. Run /codex_accounts to refresh indices.')
 
     def mutate(self, args, key):
         valid = (len(args) >= 3 and args[0] == 'rename') or (

@@ -8,7 +8,7 @@
 
 Inspected installed `hermes_cli.auth` and `agent.credential_pool` through `inspect.getsource` using the host Python interpreter. `CredentialPool.move_entry(id, 0)` reorders entries, normalizes priorities and persists; it does not rebind other pool instances or SDK clients. `hermes_cli.auth` has no move/reorder wrapper. Its existing `read_credential_pool` and `write_credential_pool` merge boundary supports the same Codex priority update under `_auth_store_lock` without `load_pool` seeding/normalizing or dataclass metadata loss. The plugin uses this boundary, retains current token generations, and reads back the exact target/order/all row fields before reporting success. Borrowed/global-root credentials are refused in a different owning profile.
 
-Future pool loading sees the preference, subject to strategy, availability, cooldown and quota. Existing runtimes/sessions and in-flight requests may retain prior credentials. Forced immediate global switching is not claimed. A newly loaded runtime is required to reliably consume the persisted preference; the plugin does not restart anything.
+Future pool loading sees the preference subject to strategy/availability/cooldown/quota. A newly started session is the only reliable user action verified here; resuming an existing session may reuse its agent and bound client. Installed gateway plugin reload re-wires plugin handlers but does not rebuild existing agents, and no supported runtime-reload action that rebinds an existing session was found. Therefore selection confirmation and README specify starting a new session (not resuming); do not promise a live switch. No plugin/core install/restart is required for the persisted preference itself.
 
 ## Verification
 
